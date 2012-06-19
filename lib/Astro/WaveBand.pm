@@ -25,6 +25,9 @@ Astro::WaveBand - Transparently work in waveband, wavelength or filter
 
   $w->natural_unit("wavelength");
 
+  if( $w1 > $w2 ) { ... }
+  if( $w1 == $w2 ) { ... }
+
 =head1 DESCRIPTION
 
 Class to transparently deal with the conversion between filters,
@@ -43,6 +46,12 @@ Used mainly as a way of storing a single number in a database table
 but using logic to determine the number that an observer is most likely
 to understand.
 
+Numerical comparison operators can be used to compare two C<Astro::WaveBand>
+objects. When checking equality, the "natural" and "instrument" methods are
+used, so if two C<Astro::WaveBand> objects return the same value from those
+methods, they are considered to be equal. When checking other comparisons
+such as greater than, the wavelength is used.
+
 =cut
 
 use 5.006;
@@ -53,24 +62,25 @@ use Carp;
 # Register an Astro::WaveBand warning category
 use warnings::register;
 
-# CVS version: $Log: WaveBand.pm,v $
-# CVS version: Revision 1.4  2002/05/28 19:15:56  timj
-# CVS version: - Include licence in perl module
-# CVS version: - Include README in MANIFEST!
-# CVS version: - Update to v0.04 for re-release to CPAN
-# CVS version:
-# CVS version: Revision 1.3  2002/05/16 21:15:59  timj
-# CVS version: Prepare for CPAN release
-# CVS version:
-our $VERSION = 0.04;
+# CVS version: $Revision$
+our $VERSION = 0.08;
 
 # Overloading
-use overload '""' => "natural";
+use overload '""' => "natural",
+             '==' => "equals",
+             '!=' => "not_equals",
+             '<=>' => "compare",
+             'fallback' => 1;
 
 # Constants
 
 # Speed of light in m/s
 use constant CLIGHT => 299792458;
+
+# list of instruments specific to a telescope
+my %TELESCOPE = (
+               UKIRT => [ "IRCAM", "UFTI", "UIST", "MICHELLE", "WFCAM" ],
+               JCMT => [ "SCUBA", "RXA3", "RXB3", "RXW", "DAS" ] );
 
 # Continuum Filters are keyed by instrument
 # although if an instrument is not specified the filters
@@ -90,7 +100,33 @@ my %FILTERS = (
 			   M => 4.7,
 			   N =>10.2,
 			   Q =>20.0,
+			   up => 0.355,
+			   gp => 0.470,
+			   rp => 0.620,
+			   ip => 0.750,
+			   zp => 0.880,
+			   Pu => 0.355,
+			   Pg => 0.470,
+			   Pr => 0.620,
+			   Pi => 0.750,
+			   Pz => 0.880,
+			   Y  => 1.020,   # this will get incorrectly classed as infrared
+			   w  => 0.608,
+			   SO => 0.600,
 			  },
+	       WFCAM => {
+			 "Z"     => 0.83,
+			 "Y"     => 0.97,
+			 "J"     => 1.17,
+			 "H"     => 1.49,
+			 "K"     => 2.03,
+			 "1-0S1" => 2.111,
+			 "BGamma"=> 2.155,
+       "1.205nbJ" => 1.205,
+                   "1.619nbH" => 1.619,
+                         "1.644FeII" => 1.631,
+			 "Blank" => 0,
+			 },
 	       IRCAM => {
 			 "J98" =>     "1.250" ,
 			 "H98" =>     "1.635" ,
@@ -111,6 +147,7 @@ my %FILTERS = (
 			 "3.5mbL" =>  "3.5"   ,
 			},
 	       UFTI => {
+                  "Y_MK" => "1.022",
 			"I" =>     "0.9"  ,
 			"Z" =>     "1.033",
 			"J98" =>   "1.250",
@@ -120,10 +157,47 @@ my %FILTERS = (
 			"1.644" => "1.644",
 			"1.57" =>  "1.57" ,
 			"2.122" => "2.122",
+                  "2.122MK" => "2.122",
 			"BrG" =>   "2.166",
 			"BrGz" =>  "2.173",
 			"2.248S(1)" => "2.248",
 			"2.27" =>  "2.270",
+			"Blank" => "-2.222",# -ve version of OT wavelength
+			"Mask"  => "-2.32", # ditto
+		       },
+	       UIST => {
+#			"K-target"  => 1.64, # old
+                  "Y_MK" => 1.022,
+                  "ZMK" => 1.033,
+			"Hartmann"  => 1.64,
+			"J98"       => 1.25,
+			"H98"       => 1.64,
+                        "1.57"      => 1.573,
+			"1.66"      => 1.664, # old
+			"1.58CH4_s" => 1.604,
+			"1.69CH4_l" => 1.674,
+			"1.644Fe"   => 1.643, #
+			"K98"       => 2.20,
+			"Kshort"    => 2.159,
+			"Klong"     => 2.227,
+			"2.122S(1)" => 2.121, #
+			"2.122MK"   => 2.127,
+			"2.248S(1)" => 2.248,
+			"2.248MK"   => 2.263,
+			"BrG"       => 2.166,
+			"2.27"      => 2.274,
+			"2.32CO"    => 2.324, # old
+			"2.42CO"    => 2.425,
+			"3.05ice"   => 3.048,
+			"Dust"      => 3.278,
+			"3.30PAH"   => 3.286,
+			"3.4nbL"    => 3.415,
+			"3.5mbL"    => 3.489,
+			"3.6nbLp"   => 3.593,
+			"3.99"      => 3.990,
+			"BrA"       => 4.053,
+			"Lp98"      => 3.77,
+			"Mp98"      => 4.69,
 		       },
 	       MICHELLE => {
 			    "F105B53" => 10.5,
@@ -149,17 +223,45 @@ my %FILTERS = (
 			 "450W" => 443,
 			 "450N" => 442,
 			 "850N" => 862,
+			 "750N" => 741,
+			 "350N" => 344,
+			 "P2000" => 2000,
+			 "P1350" => 1350,
+			 "P1100" => 1100,
+			 # This is a kluge until the class can
+			 # be extended to support multiple wavelength
+			 # instruments.
+			 "850S:PHOT" => 1100,
+			 "450W:850W" => 443,
+			 "450N:850N" => 442,
+			 "350N:750N" => 344,
 			},
+	       'SCUBA-2' => {
+			     850 => 863, # guesses
+			     450 => 445,
+			    },
 	      );
 
 # Instruments that have natural units
 my %NATURAL = (
+	       WFCAM => 'filter',
  	       CGS4 => 'wavelength',
 	       SCUBA => 'filter',
+	       'SCUBA-2' => 'filter',
 	       UFTI => 'filter',
 	       IRCAM => 'filter',
 	       MICHELLE => 'filter',
 	       ACSIS => 'frequency',
+	       DAS => 'frequency',
+	       RXA3 => 'frequency',
+	       RXB3 => 'frequency',
+	       RXW => 'frequency',
+	       RXWB => 'frequency',
+	       RXWC => 'frequency',
+	       RXWD => 'frequency',
+	       RXWD2 => 'frequency',
+               HARP => 'frequency',
+	       UIST => 'filter',
 	      );
 
 
@@ -353,6 +455,7 @@ sub filter {
 
 }
 
+
 =item B<instrument>
 
 Name of associated instrument.
@@ -445,7 +548,7 @@ present wavelength in microns.
 Returns C<undef> if the value can not be determined.
 
 This method is called automatically when the object is stringified.
-Note that you will not know the unit that was chosen....
+Note that you will not know the unit that was chosen a priori.
 
 =cut
 
@@ -476,6 +579,99 @@ sub natural {
   $value = $self->wavelength() unless defined $value;
 
   return $value;
+}
+
+=item B<compare>
+
+Compares two C<Astro::WaveBand> objects.
+
+  if( $wb1->compare( $wb2 ) ) { ... }
+
+This method will return -1 if, in the above example, $wb1 is of
+a shorter wavelength than $wb2, 0 if the wavelengths are equal,
+and +1 if $wb1 is of a longer wavelength than $wb2. Please note
+that for strict waveband equality the C<equals> method should be
+used, as that method uses the C<natural> method to check if two
+wavebands are identical.
+
+This method is overloaded with the standard numerical comparison
+operators, so to check if one waveband is shorter than another
+you would do
+
+  if( $wb1 < $wb2 ) { ... }
+
+and it will work as you expect. This method does not overload
+the == operator; see the C<compare> method for that.
+
+=cut
+
+sub compare {
+  my ( $object1, $object2, $was_reversed ) = @_;
+  ( $object1, $object2 ) = ( $object2, $object1 ) if $was_reversed;
+
+  return $object1->wavelength <=> $object2->wavelength;
+}
+
+=item B<equals>
+
+Compares two C<Astro::WaveBand> objects for equality.
+
+  if( $wb1->equals( $wb2 ) ) { ... }
+
+This method will return 1 if, in the above example, both
+C<Astro::WaveBand> objects return the same value from the
+C<natural> method AND for the C<instrument> method (if it
+is defined for both objects) , and 0 of they return different values.
+
+This method is overloaded using the == operator, so
+
+  if( $wb1 == $wb2 ) { ... }
+
+is functionally the same as the first example.
+
+=cut
+
+sub equals {
+  my $self = shift;
+  my $comp = shift;
+
+  if( defined( $self->instrument ) && defined( $comp->instrument ) ) {
+    return ( ( $self->natural eq $comp->natural ) &&
+             ( $self->instrument eq $comp->instrument ) );
+  } else {
+    return ( $self->natural eq $comp->natural );
+  }
+}
+
+=item B<not_equals>
+
+Compares two C<Astro::WaveBand> objects for inequality.
+
+  if( $wb1->not_equals( $wb2 ) ) { ... }
+
+This method will return 1 if, in the above example, either the
+C<natural> method or the C<instrument> method return different
+values. If the instrument is undefined for either object, then
+the C<natural> method will be used.
+
+This method is overloaded using the != operator, so
+
+  if( $wb1 != $wb2 ) { ... }
+
+is functionally the same as the first example.
+
+=cut
+
+sub not_equals {
+  my $self = shift;
+  my $comp = shift;
+
+  if( ! defined( $self->instrument ) || ! defined( $comp->instrument ) ) {
+    return ( $self->natural ne $comp->natural );
+  } else {
+    return ( ( $self->natural ne $comp->natural ) ||
+             ( $self->instrument ne $comp->instrument ) );
+  }
 }
 
 =back
@@ -700,6 +896,7 @@ sub _convert_to {
     # Inverse cm
     $output = 1.0 / ( $lambda / 10_000);
   } elsif ($category eq 'filter') {
+
     # This is slightly harder since we know the value but
     # not the key. Go through each hash looking for a matching
     # key. If we know the instrument we start looking there
@@ -714,16 +911,20 @@ sub _convert_to {
     # the base wavelegnth to use 8 significant figures
     $lambda = sprintf("%8e", $lambda);
 
-    OUTER: foreach my $inst (@search) {
-	next unless exists $FILTERS{$inst};
-	my $hash = $FILTERS{$inst};
-	for my $key (keys %{ $hash }) {
-	  if ($hash->{$key} == $lambda) {
-	    $output = $key;
-	    last OUTER;
-	  }
-	}
+  OUTER: foreach my $inst (@search) {
+      next unless exists $FILTERS{$inst};
+      my $hash = $FILTERS{$inst};
+      for my $key (keys %{ $hash }) {
+        # Make sure we use the same rounding scheme on the values
+        # returned from the hash, so we don't have to worry about
+        # rounding issues fouling things up (like saying 8.3e-1 !=
+        # 0.83).
+        if (sprintf("%8e", $hash->{$key} ) eq $lambda) {
+          $output = $key;
+          last OUTER;
+        }
       }
+    }
   }
 
   return $output;
@@ -789,17 +990,155 @@ sub _convert_from {
 
 =end __PRIVATE_METHODS__
 
+=head2 Static functions
+
+These functions enable the user to obtain an overview of
+the supported filter, instrument and telescope combinations.
+
+=over 4
+
+=item B<has_filter>
+
+Returns true if the a particular instrument has a particular filter,
+otherwise returns C<undef>, e.g.
+
+  if( Astro::WaveBand::has_filter( UIST => "Kprime" )  {
+     ...
+  }
+
+if you pass a hash containing multiple instrument combinations,
+all must be valid or the method will return undef.
+
+=cut
+
+sub has_filter {
+   return undef unless @_;
+
+   # grab instrument and filter list
+   my %list = @_;
+
+   my $counter = 0;
+   foreach my $key ( sort keys %list ) {
+      # if the filter exists in the filter list for that instrument,
+      # increment the counter
+     $counter++ if exists $FILTERS{$key}{$list{$key}};
+   }
+
+   # if the counter is the same size as the input list then all conditons
+   # have been proved to be true...
+   return undef unless scalar(keys %list) == $counter;
+   return 1;
+}
+
+=item B<has_instrument>
+
+Returns true if the a particular instrument exists for a particular
+telescope, otherwise returns C<undef>, e.g.
+
+  if( Astro::WaveBand::has_instrument( UKIRT => "UIST" )  {
+     ...
+  }
+
+if you pass a hash containing multiple instrument combinations,
+all must be valid or the method will return undef.
+
+=cut
+
+sub has_instrument {
+   return undef unless @_;
+
+   # grab instrument and filter list
+   my %list = @_;
+
+   my $counter = 0;
+   foreach my $key ( sort keys %list ) {
+      # if the filter exists in the filter list for that instrument,
+      # increment the counter
+      for my $i ( 0 ... $#{$TELESCOPE{$key}} ) {
+         if ( $TELESCOPE{$key}->[$i] eq $list{$key} ) {
+             $counter++;
+             last;
+         }
+      }
+   }
+
+   # if the counter is the same size as the input list then all conditons
+   # have been proved to be true...
+   return undef unless scalar(keys %list) == $counter;
+   return 1;
+}
+
+
+=item B<is_observable>
+
+Returns true if the a particular telescope and filter combination is
+avaialable, otherwise returns C<undef>, e.g.
+
+  if( Astro::WaveBand::is_observable( UKIRT => 'Kprime' )  {
+     ...
+  }
+
+=cut
+
+sub is_observable {
+   #my $self = shift;
+   return undef unless @_;
+
+   # grab instrument and filter list
+   my %list = @_;
+
+   my $counter = 0;
+   foreach my $key ( sort keys %list ) {
+      # if the filter exists in the filter list for that instrument,
+      # increment the counter
+      #print "TELESCOPE $key\n";
+      for my $i ( 0 ... $#{$TELESCOPE{$key}} ) {
+
+         #print "  INSTRUMENT ${$TELESCOPE{$key}}[$i]\n";
+         #print "  \$list{\$key} = $list{$key}\n";
+         my $instrument = ${$TELESCOPE{$key}}[$i];
+
+         if ( ${$FILTERS{$instrument}}{$list{$key}} ) {
+           $counter++;
+           #print "$counter: $key\n";
+           #print "   $list{$key}, $instrument, $list{$key}, ".
+           #      "${$FILTERS{${$TELESCOPE{$key}}[$i]}}{$list{$key}}\n";
+           last;
+         }
+      }
+   }
+
+   # if the counter is the same size as the input list then all conditons
+   # have been proved to be true...
+   return undef unless scalar(keys %list) == $counter;
+   return 1;
+}
+
+=back
+
 =head1 BUGS
 
 Does not automatically convert metres to microns and GHz to Hz etc.
 
+Can not handle filters that correspond to multiple wavelengths.
+Currently SCUBA is the main issue. With a 450:850 filter this class
+always returns the shortest wavelength (since that is the wavelength
+that affects scheduling the most).
+
+Should handle velocities and redshifts in order to disambiguate rest
+frequencies and observed frequencies. Would also be nice if the class
+could accept a molecule and transition, allowing the natural unit
+to appear as something like: "CO 3-2 @ 30km/s LSR radio".
+
 =head1 AUTHORS
 
 Tim Jenness E<lt>t.jenness@jach.hawaii.eduE<gt>
+Alasdair Allan E<lt>aa@astro.ex.ac.ukE<gt>
+Tim Lister E<lt>tlister@lcogt.netE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (C) 2001 Particle Physics and Astronomy Research Council.
+Copyright (C) 2001-2003 Particle Physics and Astronomy Research Council.
 All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify
