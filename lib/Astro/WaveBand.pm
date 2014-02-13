@@ -63,7 +63,7 @@ use Carp;
 use warnings::register;
 
 # CVS version: $Revision$
-our $VERSION = 0.08;
+our $VERSION = 0.09;
 
 # Overloading
 use overload '""' => "natural",
@@ -80,7 +80,7 @@ use constant CLIGHT => 299792458;
 # list of instruments specific to a telescope
 my %TELESCOPE = (
                UKIRT => [ "IRCAM", "UFTI", "UIST", "MICHELLE", "WFCAM" ],
-               JCMT => [ "SCUBA", "RXA3", "RXB3", "RXW", "DAS" ] );
+               JCMT => [ "SCUBA", "RXA3", "RXA3M", "RXB3", "RXW", "DAS" ] );
 
 # Continuum Filters are keyed by instrument
 # although if an instrument is not specified the filters
@@ -155,6 +155,7 @@ my %FILTERS = (
 			"K98" =>   "2.150",
 			"Kprime" =>"2.120",
 			"1.644" => "1.644",
+                        '1.69CH4_l' => '1.690',
 			"1.57" =>  "1.57" ,
 			"2.122" => "2.122",
                   "2.122MK" => "2.122",
@@ -254,6 +255,7 @@ my %NATURAL = (
 	       ACSIS => 'frequency',
 	       DAS => 'frequency',
 	       RXA3 => 'frequency',
+	       RXA3M => 'frequency',
 	       RXB3 => 'frequency',
 	       RXW => 'frequency',
 	       RXWB => 'frequency',
